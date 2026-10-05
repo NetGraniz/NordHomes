@@ -1,0 +1,2 @@
+# Empty template. Player homes are generated at runtime and must never be committed.
+players: {}

@@ -1,0 +1,28 @@
+name: NordHomes
+version: '1.1.0'
+main: com.nordfjell.nordhomes.NordHomesPlugin
+api-version: '26.2'
+author: Nord Fjell
+description: Lightweight single-home and last-death return for Nord Fjell.
+
+commands:
+  sethome:
+    description: Save or overwrite your home.
+    usage: /sethome
+    permission: nordhomes.sethome
+  home:
+    description: Teleport to your home after standing still for 120 seconds.
+    usage: /home
+    permission: nordhomes.home
+  back:
+    description: Return to your most recent death location after standing still for 120 seconds.
+    usage: /back
+    permission: nordhomes.back
+
+permissions:
+  nordhomes.sethome:
+    default: true
+  nordhomes.home:
+    default: true
+  nordhomes.back:
+    default: true
