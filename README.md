@@ -1,5 +1,8 @@
 # NordHomes
 
+> Release build and installation requirements: see [BUILDING.md](BUILDING.md).
+> Older local paths below describe historical test fixtures, not the release build.
+
 Small Paper plugin providing only the Nord Fjell home features that are in use:
 
 - `/sethome` saves or overwrites the player's single home.

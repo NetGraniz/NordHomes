@@ -1,5 +1,5 @@
 name: NordHomes
-version: '1.1.0'
+version: '${project.version}'
 main: com.nordfjell.nordhomes.NordHomesPlugin
 api-version: '26.2'
 author: Nord Fjell
