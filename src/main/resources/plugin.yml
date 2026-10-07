@@ -2,6 +2,7 @@ name: NordHomes
 version: '${project.version}'
 main: com.nordfjell.nordhomes.NordHomesPlugin
 api-version: '26.2'
+folia-supported: true
 author: Nord Fjell
 description: Lightweight single-home and last-death return for Nord Fjell.
 

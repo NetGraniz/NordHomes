@@ -15,7 +15,8 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
@@ -37,7 +38,7 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
 
     private File dataFile;
     private YamlConfiguration data;
-    private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
+    private final Map<UUID, PendingTeleport> pendingTeleports = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
@@ -57,7 +58,7 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
-        pendingTeleports.values().forEach(pending -> pending.task.cancel());
+        pendingTeleports.values().forEach(pending -> { if(pending.task!=null)pending.task.cancel(); });
         pendingTeleports.clear();
         saveData();
     }
@@ -110,7 +111,8 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
         }
         cancelPending(player, null);
         String path = homePath(player.getUniqueId());
-        boolean replaced = data.isConfigurationSection(path);
+        boolean replaced;
+        synchronized(this){replaced = data.isConfigurationSection(path);}
         writeLocation(path, player.getLocation());
         saveData();
         player.sendMessage(success(replaced ? "Home updated." : "Home saved."));
@@ -150,21 +152,22 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
         UUID playerId = player.getUniqueId();
         PendingTeleport pending = new PendingTeleport(target.clone(), destinationName, successMessage,
                 TELEPORT_DELAY_SECONDS);
-        pending.task = Bukkit.getScheduler().runTaskTimer(this, () -> {
+        pendingTeleports.put(playerId, pending);
+        pending.task = player.getScheduler().runAtFixedRate(this, task -> {
             if (!player.isOnline() || pendingTeleports.get(playerId) != pending) {
-                pending.task.cancel();
+                task.cancel();
                 return;
             }
             pending.secondsRemaining--;
             if (pending.secondsRemaining <= 0) {
                 pendingTeleports.remove(playerId);
-                pending.task.cancel();
+                task.cancel();
                 teleport(player, pending.target, pending.successMessage);
                 return;
             }
             showCountdown(player, pending.destinationName, pending.secondsRemaining);
-        }, 20L, 20L);
-        pendingTeleports.put(playerId, pending);
+        }, () -> pendingTeleports.remove(playerId,pending), 20L, 20L);
+        if (pending.task == null) { pendingTeleports.remove(playerId,pending); return; }
         player.sendMessage(Component.text("Teleporting to your " + destinationName + " in "
                 + TELEPORT_DELAY_SECONDS + " seconds. Do not move.", NamedTextColor.YELLOW));
         showCountdown(player, destinationName, TELEPORT_DELAY_SECONDS);
@@ -185,17 +188,20 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
 
     private void teleport(Player player, Location target, String successMessage) {
         player.sendMessage(Component.text("Loading destination…", NamedTextColor.GRAY));
-        player.teleportAsync(target).whenComplete((teleported, error) ->
-                Bukkit.getScheduler().runTask(this, () -> {
+        player.teleportAsync(target).whenComplete((teleported, error) -> {
+            if (!isEnabled()) return;
+            try { player.getScheduler().execute(this, () -> {
+                    if (!player.isOnline()) return;
                     if (error != null || !Boolean.TRUE.equals(teleported)) {
                         player.sendMessage(error("Teleport failed. Please try again."));
                     } else {
                         player.sendMessage(success(successMessage));
                     }
-                }));
+                },null,1L); } catch (org.bukkit.plugin.IllegalPluginAccessException ignored) { }
+        });
     }
 
-    private void writeLocation(String path, Location location) {
+    private synchronized void writeLocation(String path, Location location) {
         World world = location.getWorld();
         data.set(path + ".world", world.getName());
         data.set(path + ".world-uuid", world.getUID().toString());
@@ -206,7 +212,7 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
         data.set(path + ".pitch", location.getPitch());
     }
 
-    private Location readLocation(String path) {
+    private synchronized Location readLocation(String path) {
         if (!data.isConfigurationSection(path)) return null;
         World world = null;
         String uuidValue = data.getString(path + ".world-uuid");
@@ -235,7 +241,8 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
         return root(playerId) + ".home";
     }
 
-    private void saveData() {
+    private synchronized void saveData() {
+        if(data==null || dataFile==null)return;
         try {
             data.save(dataFile);
         } catch (IOException exception) {
@@ -331,7 +338,7 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
         private final String destinationName;
         private final String successMessage;
         private int secondsRemaining;
-        private BukkitTask task;
+        private ScheduledTask task;
 
         private PendingTeleport(Location target, String destinationName, String successMessage,
                                 int secondsRemaining) {

@@ -1,15 +1,17 @@
-# NordHomes
+# NordHomes 1.2.0
+
+One release JAR for Paper 26.2 and Folia 26.2: [compatibility notes](FOLIA.md).
 
 > Release build and installation requirements: see [BUILDING.md](BUILDING.md).
 > Older local paths below describe historical test fixtures, not the release build.
 
-Small Paper plugin providing only the Nord Fjell home features that are in use:
+Small Paper/Folia plugin providing only the Nord Fjell home features that are in use:
 
 - `/sethome` saves or overwrites the player's single home.
 - `/home` teleports to that home after the player stands still for 120 seconds.
 - `/back` returns to the most recent death location after the same stationary delay.
 
-Moving, being teleported, dying, disconnecting or stopping the plugin cancels a pending
+Moving, dying, disconnecting or stopping the plugin cancels a pending
 teleport. Looking around does not count as movement. The remaining time is shown in the
 action bar.
 
