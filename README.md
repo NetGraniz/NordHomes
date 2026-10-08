@@ -1,22 +1,29 @@
 # NordHomes 1.2.0
 
-One release JAR for Paper 26.2 and Folia 26.2: [compatibility notes](FOLIA.md).
+One home and a return to the last death location for Paper 26.2 and Folia 26.2. Both platforms use one JAR on Java 25.
 
-> Release build and installation requirements: see [BUILDING.md](BUILDING.md).
-> Older local paths below describe historical test fixtures, not the release build.
+## Commands
 
-Small Paper/Folia plugin providing only the Nord Fjell home features that are in use:
+- `/sethome` saves your current location, replacing your previous home.
+- `/home` starts a 120-second stationary countdown before teleporting home.
+- `/back` starts the same countdown before returning to your last death location.
 
-- `/sethome` saves or overwrites the player's single home.
-- `/home` teleports to that home after the player stands still for 120 seconds.
-- `/back` returns to the most recent death location after the same stationary delay.
+The action bar shows the remaining time. Moving, dying, disconnecting or stopping the plugin cancels the countdown. Looking around does not count as movement.
 
-Moving, dying, disconnecting or stopping the plugin cancels a pending
-teleport. Looking around does not count as movement. The remaining time is shown in the
-action bar.
+## Permissions
 
-The bundled initial `homes.yml` is an empty template and contains no player locations.
-Runtime player data must never be committed. Existing installed `homes.yml` files are
-not replaced by the template. If a local HuskHomes database is present, the plugin can
-import it on first migration. Named homes are collapsed to one location per player,
-preferring the old home named `home`. Keep a private backup before migration.
+| Permission | Allows | Default |
+| --- | --- | --- |
+| `nordhomes.sethome` | `/sethome` | Everyone |
+| `nordhomes.home` | `/home` | Everyone |
+| `nordhomes.back` | `/back` | Everyone |
+
+## Data and migration
+
+The bundled `homes.yml` is empty. Installed homes are not overwritten; keep the server's file private and back it up before updating.
+
+On the first migration, NordHomes can import a local HuskHomes database. It keeps one home per player, preferring the home named `home`. Keep a backup of the original database.
+
+## Build and installation
+
+Use Maven 3.9+ and JDK 25. See [BUILDING.md](BUILDING.md) for the release build and [FOLIA.md](FOLIA.md) for platform support. Stop the server before replacing the JAR, and retain existing player data.
