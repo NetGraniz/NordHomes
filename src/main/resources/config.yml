@@ -1,0 +1,8 @@
+# Shared countdown settings for /home and /back.
+teleport:
+  # 0 teleports immediately. Maximum supported value is one day (86400 seconds).
+  delay-seconds: 120
+  # When true, changing position does not cancel the countdown.
+  allow-movement: false
+  # Used only when allow-movement is true. Any uncancelled positive damage cancels the countdown.
+  damage-cancels-countdown: true

@@ -8,7 +8,7 @@ folder, private configuration, prebuilt old plugin, or machine-specific path is 
 
 From this project's root, run `mvn clean verify`, or on PowerShell run
 `./build.ps1`. The wrapper accepts `-MavenCommand /path/to/mvn`.
-The JAR is `target/NordHomes-1.2.0.jar`.
+The JAR is `target/NordHomes-1.3.0.jar`.
 This project has no existing automated unit suite; a successful build alone is not a functional test.
 
 

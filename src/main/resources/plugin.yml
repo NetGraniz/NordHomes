@@ -12,11 +12,11 @@ commands:
     usage: /sethome
     permission: nordhomes.sethome
   home:
-    description: Teleport to your home after standing still for 120 seconds.
+    description: Teleport to your home after the configured countdown.
     usage: /home
     permission: nordhomes.home
   back:
-    description: Return to your most recent death location after standing still for 120 seconds.
+    description: Return to your most recent death location after the configured countdown.
     usage: /back
     permission: nordhomes.back
 

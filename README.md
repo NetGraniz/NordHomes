@@ -1,14 +1,14 @@
-# NordHomes 1.2.0
+# NordHomes 1.3.0
 
 One home and a return to the last death location for Paper 26.2 and Folia 26.2. Both platforms use one JAR on Java 25.
 
 ## Commands
 
 - `/sethome` saves your current location, replacing your previous home.
-- `/home` starts a 120-second stationary countdown before teleporting home.
+- `/home` starts the configured countdown before teleporting home.
 - `/back` starts the same countdown before returning to your last death location.
 
-The action bar shows the remaining time. Moving, dying, disconnecting or stopping the plugin cancels the countdown. Looking around does not count as movement.
+The action bar shows the remaining time. `config.yml` controls the delay, whether movement is allowed, and—when movement is allowed—whether received damage cancels the countdown. Dying, disconnecting or stopping the plugin always cancels it. Looking around does not count as movement.
 
 ## Permissions
 

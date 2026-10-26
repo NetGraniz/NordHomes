@@ -10,7 +10,9 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -34,14 +36,19 @@ import java.util.UUID;
 import java.util.logging.Level;
 
 public final class NordHomesPlugin extends JavaPlugin implements Listener {
-    private static final int TELEPORT_DELAY_SECONDS = 120;
-
     private File dataFile;
     private YamlConfiguration data;
+    private int teleportDelaySeconds;
+    private boolean allowMovement;
+    private boolean damageCancelsCountdown;
     private final Map<UUID, PendingTeleport> pendingTeleports = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
+        saveDefaultConfig();
+        teleportDelaySeconds = boundedDelay(getConfig().getInt("teleport.delay-seconds", 120));
+        allowMovement = getConfig().getBoolean("teleport.allow-movement", false);
+        damageCancelsCountdown = getConfig().getBoolean("teleport.damage-cancels-countdown", true);
         if (!getDataFolder().exists() && !getDataFolder().mkdirs()) {
             getLogger().severe("Could not create the NordHomes data directory.");
             getServer().getPluginManager().disablePlugin(this);
@@ -73,7 +80,7 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onMove(PlayerMoveEvent event) {
-        if (!pendingTeleports.containsKey(event.getPlayer().getUniqueId()) || event.getTo() == null) return;
+        if (allowMovement || !pendingTeleports.containsKey(event.getPlayer().getUniqueId()) || event.getTo() == null) return;
         Location from = event.getFrom();
         Location to = event.getTo();
         if (from.getWorld() != to.getWorld()
@@ -82,6 +89,13 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
                 || from.getZ() != to.getZ()) {
             cancelPending(event.getPlayer(), "Teleport cancelled because you moved.");
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onDamage(EntityDamageEvent event) {
+        if (!allowMovement || !damageCancelsCountdown || !(event.getEntity() instanceof Player player)
+                || event.getFinalDamage() <= 0) return;
+        cancelPending(player, "Teleport cancelled because you took damage.");
     }
 
     @EventHandler
@@ -149,9 +163,13 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
 
     private void beginTeleport(Player player, Location target, String destinationName, String successMessage) {
         cancelPending(player, null);
+        if (teleportDelaySeconds == 0) {
+            teleport(player, target, successMessage);
+            return;
+        }
         UUID playerId = player.getUniqueId();
         PendingTeleport pending = new PendingTeleport(target.clone(), destinationName, successMessage,
-                TELEPORT_DELAY_SECONDS);
+                teleportDelaySeconds);
         pendingTeleports.put(playerId, pending);
         pending.task = player.getScheduler().runAtFixedRate(this, task -> {
             if (!player.isOnline() || pendingTeleports.get(playerId) != pending) {
@@ -169,13 +187,27 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
         }, () -> pendingTeleports.remove(playerId,pending), 20L, 20L);
         if (pending.task == null) { pendingTeleports.remove(playerId,pending); return; }
         player.sendMessage(Component.text("Teleporting to your " + destinationName + " in "
-                + TELEPORT_DELAY_SECONDS + " seconds. Do not move.", NamedTextColor.YELLOW));
-        showCountdown(player, destinationName, TELEPORT_DELAY_SECONDS);
+                + teleportDelaySeconds + " seconds. " + countdownRule(), NamedTextColor.YELLOW));
+        showCountdown(player, destinationName, teleportDelaySeconds);
     }
 
     private void showCountdown(Player player, String destinationName, int seconds) {
         player.sendActionBar(Component.text(capitalize(destinationName) + " in " + seconds
-                + "s · do not move", NamedTextColor.GOLD));
+                + "s · " + countdownRule().toLowerCase(Locale.ROOT), NamedTextColor.GOLD));
+    }
+
+    private String countdownRule() {
+        if (!allowMovement) return "Do not move.";
+        return damageCancelsCountdown ? "Movement is allowed; taking damage cancels the countdown."
+                : "Movement and damage do not cancel the countdown.";
+    }
+
+    private int boundedDelay(int configured) {
+        if (configured < 0 || configured > 86_400) {
+            getLogger().warning("teleport.delay-seconds must be between 0 and 86400; using 120.");
+            return 120;
+        }
+        return configured;
     }
 
     private void cancelPending(Player player, String message) {
