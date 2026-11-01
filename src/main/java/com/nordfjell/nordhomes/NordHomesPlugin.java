@@ -7,6 +7,8 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -33,22 +35,26 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
 public final class NordHomesPlugin extends JavaPlugin implements Listener {
     private File dataFile;
     private YamlConfiguration data;
-    private int teleportDelaySeconds;
-    private boolean allowMovement;
-    private boolean damageCancelsCountdown;
+    private volatile Settings settings;
     private final Map<UUID, PendingTeleport> pendingTeleports = new ConcurrentHashMap<>();
+    private final AtomicBoolean reloadInProgress = new AtomicBoolean();
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        teleportDelaySeconds = boundedDelay(getConfig().getInt("teleport.delay-seconds", 120));
-        allowMovement = getConfig().getBoolean("teleport.allow-movement", false);
-        damageCancelsCountdown = getConfig().getBoolean("teleport.damage-cancels-countdown", true);
+        try {
+            settings = loadSettings();
+        } catch (IOException | InvalidConfigurationException | IllegalArgumentException exception) {
+            getLogger().log(Level.SEVERE, "Could not load config.yml; NordHomes will be disabled.", exception);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         if (!getDataFolder().exists() && !getDataFolder().mkdirs()) {
             getLogger().severe("Could not create the NordHomes data directory.");
             getServer().getPluginManager().disablePlugin(this);
@@ -80,7 +86,7 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onMove(PlayerMoveEvent event) {
-        if (allowMovement || !pendingTeleports.containsKey(event.getPlayer().getUniqueId()) || event.getTo() == null) return;
+        if (settings.allowMovement() || !pendingTeleports.containsKey(event.getPlayer().getUniqueId()) || event.getTo() == null) return;
         Location from = event.getFrom();
         Location to = event.getTo();
         if (from.getWorld() != to.getWorld()
@@ -93,7 +99,9 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDamage(EntityDamageEvent event) {
-        if (!allowMovement || !damageCancelsCountdown || !(event.getEntity() instanceof Player player)
+        Settings current = settings;
+        if (!current.allowMovement() || !current.damageCancelsCountdown()
+                || !(event.getEntity() instanceof Player player)
                 || event.getFinalDamage() <= 0) return;
         cancelPending(player, "Teleport cancelled because you took damage.");
     }
@@ -106,6 +114,9 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
+        if (command.getName().equalsIgnoreCase("nordhomes")) {
+            return reloadSettings(sender, args);
+        }
         if (!(sender instanceof Player player)) {
             sender.sendMessage(error("Only players can use this command."));
             return true;
@@ -163,13 +174,14 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
 
     private void beginTeleport(Player player, Location target, String destinationName, String successMessage) {
         cancelPending(player, null);
-        if (teleportDelaySeconds == 0) {
+        Settings current = settings;
+        if (current.teleportDelaySeconds() == 0) {
             teleport(player, target, successMessage);
             return;
         }
         UUID playerId = player.getUniqueId();
         PendingTeleport pending = new PendingTeleport(target.clone(), destinationName, successMessage,
-                teleportDelaySeconds);
+                current.teleportDelaySeconds());
         pendingTeleports.put(playerId, pending);
         pending.task = player.getScheduler().runAtFixedRate(this, task -> {
             if (!player.isOnline() || pendingTeleports.get(playerId) != pending) {
@@ -183,31 +195,103 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
                 teleport(player, pending.target, pending.successMessage);
                 return;
             }
-            showCountdown(player, pending.destinationName, pending.secondsRemaining);
+            showCountdown(player, pending.destinationName, pending.secondsRemaining, settings);
         }, () -> pendingTeleports.remove(playerId,pending), 20L, 20L);
         if (pending.task == null) { pendingTeleports.remove(playerId,pending); return; }
         player.sendMessage(Component.text("Teleporting to your " + destinationName + " in "
-                + teleportDelaySeconds + " seconds. " + countdownRule(), NamedTextColor.YELLOW));
-        showCountdown(player, destinationName, teleportDelaySeconds);
+                + current.teleportDelaySeconds() + " seconds. " + countdownRule(current), NamedTextColor.YELLOW));
+        showCountdown(player, destinationName, current.teleportDelaySeconds(), current);
     }
 
-    private void showCountdown(Player player, String destinationName, int seconds) {
+    private void showCountdown(Player player, String destinationName, int seconds, Settings current) {
         player.sendActionBar(Component.text(capitalize(destinationName) + " in " + seconds
-                + "s · " + countdownRule().toLowerCase(Locale.ROOT), NamedTextColor.GOLD));
+                + "s · " + countdownRule(current).toLowerCase(Locale.ROOT), NamedTextColor.GOLD));
     }
 
-    private String countdownRule() {
-        if (!allowMovement) return "Do not move.";
-        return damageCancelsCountdown ? "Movement is allowed; taking damage cancels the countdown."
+    private String countdownRule(Settings current) {
+        if (!current.allowMovement()) return "Do not move.";
+        return current.damageCancelsCountdown() ? "Movement is allowed; taking damage cancels the countdown."
                 : "Movement and damage do not cancel the countdown.";
     }
 
-    private int boundedDelay(int configured) {
-        if (configured < 0 || configured > 86_400) {
-            getLogger().warning("teleport.delay-seconds must be between 0 and 86400; using 120.");
-            return 120;
+    private boolean reloadSettings(CommandSender sender, String[] args) {
+        if (!(sender instanceof ConsoleCommandSender)) {
+            sender.sendMessage(error("This command can only be used from the server console."));
+            return true;
         }
-        return configured;
+        if (args.length != 1 || !args[0].equalsIgnoreCase("reload")) {
+            sender.sendMessage(error("Usage: /nordhomes reload"));
+            return true;
+        }
+        if (!reloadInProgress.compareAndSet(false, true)) {
+            sender.sendMessage(error("A NordHomes configuration reload is already in progress."));
+            return true;
+        }
+
+        sender.sendMessage(Component.text("Reloading NordHomes configuration…", NamedTextColor.YELLOW));
+        try {
+            getServer().getAsyncScheduler().runNow(this, task -> {
+                try {
+                    Settings loaded = loadSettings();
+                    completeReload(sender, loaded, null);
+                } catch (IOException | InvalidConfigurationException | IllegalArgumentException exception) {
+                    completeReload(sender, null, exception);
+                }
+            });
+        } catch (org.bukkit.plugin.IllegalPluginAccessException exception) {
+            reloadInProgress.set(false);
+            sender.sendMessage(error("NordHomes is shutting down; configuration was not reloaded."));
+        }
+        return true;
+    }
+
+    private void completeReload(CommandSender sender, Settings loaded, Exception failure) {
+        try {
+            getServer().getGlobalRegionScheduler().execute(this, () -> {
+                reloadInProgress.set(false);
+                if (failure != null) {
+                    getLogger().log(Level.WARNING,
+                            "Could not reload config.yml; previous settings remain active.", failure);
+                    sender.sendMessage(error("NordHomes configuration reload failed; previous settings remain active. Check the console log."));
+                    return;
+                }
+                settings = loaded;
+                getLogger().info("NordHomes configuration reloaded from config.yml.");
+                sender.sendMessage(success("NordHomes configuration reloaded successfully."));
+            });
+        } catch (org.bukkit.plugin.IllegalPluginAccessException ignored) {
+            reloadInProgress.set(false);
+        }
+    }
+
+    private Settings loadSettings() throws IOException, InvalidConfigurationException {
+        File configFile = new File(getDataFolder(), "config.yml");
+        YamlConfiguration loaded = new YamlConfiguration();
+        loaded.load(configFile);
+
+        int delay = integerSetting(loaded, "teleport.delay-seconds", 120);
+        if (delay < 0 || delay > 86_400) {
+            throw new IllegalArgumentException("teleport.delay-seconds must be between 0 and 86400.");
+        }
+        boolean movement = booleanSetting(loaded, "teleport.allow-movement", false);
+        boolean damageCancellation = booleanSetting(loaded, "teleport.damage-cancels-countdown", true);
+        return new Settings(delay, movement, damageCancellation);
+    }
+
+    private int integerSetting(YamlConfiguration configuration, String path, int defaultValue) {
+        if (!configuration.contains(path)) return defaultValue;
+        if (!configuration.isInt(path)) {
+            throw new IllegalArgumentException(path + " must be an integer.");
+        }
+        return configuration.getInt(path);
+    }
+
+    private boolean booleanSetting(YamlConfiguration configuration, String path, boolean defaultValue) {
+        if (!configuration.contains(path)) return defaultValue;
+        if (!configuration.isBoolean(path)) {
+            throw new IllegalArgumentException(path + " must be true or false.");
+        }
+        return configuration.getBoolean(path);
     }
 
     private void cancelPending(Player player, String message) {
@@ -379,6 +463,10 @@ public final class NordHomesPlugin extends JavaPlugin implements Listener {
             this.successMessage = successMessage;
             this.secondsRemaining = secondsRemaining;
         }
+    }
+
+    private record Settings(int teleportDelaySeconds, boolean allowMovement,
+                            boolean damageCancelsCountdown) {
     }
 
 }

@@ -1,8 +1,8 @@
-# Paper / Folia compatibility — 1.2.0
+# Paper / Folia compatibility — 1.3.1
 
-Use `NordHomes-1.2.0.jar` on either platform with JDK 25. Entity/global scheduler APIs support both platforms; no separate branch is needed.
+Use `NordHomes-1.3.1.jar` on either platform with JDK 25. Entity/global scheduler APIs support both platforms; no separate branch is needed.
 
-Countdowns and completion messages use the player's entity scheduler; teleportAsync handles cross-region travel. Shared YAML access is serialized, preserving the data format and 120-second delay. Persistence still uses synchronous YAML writes: this is compatibility work, not a demonstrated 1000-player storage optimization.
+Countdowns and completion messages use the player's entity scheduler; teleportAsync handles cross-region travel. Shared YAML access is serialized, preserving the data format and configured delay. Persistence still uses synchronous YAML writes: this is compatibility work, not a demonstrated 1000-player storage optimization.
 
 ## Verification and limits
 

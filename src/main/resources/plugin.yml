@@ -19,6 +19,10 @@ commands:
     description: Return to your most recent death location after the configured countdown.
     usage: /back
     permission: nordhomes.back
+  nordhomes:
+    description: Manage NordHomes.
+    usage: /nordhomes reload
+    permission: nordhomes.reload
 
 permissions:
   nordhomes.sethome:
@@ -27,3 +31,6 @@ permissions:
     default: true
   nordhomes.back:
     default: true
+  nordhomes.reload:
+    description: Reload the NordHomes configuration from the server console.
+    default: op
